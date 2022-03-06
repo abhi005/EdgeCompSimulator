@@ -2,6 +2,10 @@ scene:
   length: 100
   height: 100
   decision_period: 10
+  mode: train
+  actor_lr: 0.001
+  critic_lr: 0.002
+  discount: 0.001
   mec_servers:
     count: 5
     comp_capacity: 2

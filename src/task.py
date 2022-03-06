@@ -10,40 +10,43 @@ class Task:
         self.curr_alloted_cpu_cycles = 0
         self.UE = UE
         self.MECs = UE.mec_conns
-        self.cloud = UE.cloud
-        # self.calculate_local_computing_delay()
-        # self.calculate_local_energy_consumption()
-        # self.calculate_edge_computing_delay()
-        # self.calculate_cloud_computing_delay()
+        self.calculate_local_computing_delay()
+        self.calculate_local_energy_consumption()
+        self.calculate_edge_transmission_delay()
+        self.calculate_cloud_transmission_delay()
+        self.calculate_cloud_computing_delay()
+        self.calculate_edge_transmission_energy()
+        self.calculate_cloud_transmission_energy()
+        self.calculate_edge_computing_delay()
 
     def calculate_local_computing_delay(self):
-        self.t_calc_local = self.cycles / self.UE.comp_cap
+        self.T_calc_local = self.cycles / self.UE.comp_cap
 
     def calculate_local_energy_consumption(self):
-        self.local_energy_req = self.t_calc_local * self.UE.p_calc
-    
-    def calculate_edge_computing_delay(self):
-        self.edge_comp_delays = []
-        for i in range(len(self.MECs)):
-            self.edge_comp_delays.append(self.cycles / self.MECs[i].alloted_cpu_cycles)
-
-    def calculate_cloud_computing_delay(self):
-        self.cloud_comp_delay = self.cycles / self.cloud.comp_cap
+        self.E_calc_local = self.T_calc_local * self.UE.p_calc
 
     def calculate_edge_transmission_delay(self):
-        self.edge_trans_delays = []
+        self.T_trans_edge = []
         for i in range(len(self.MECs)):
-            self.edge_trans_delays.append(self.MECs[i].alloted_data_size / self.MECs[i].data_rate)
+            self.T_trans_edge.append(self.size / self.MECs[i].data_rate)
 
     def calculate_cloud_transmission_delay(self):
-        self.cloud_trans_delay = min(self.edge_trans_delays) + self.cloud.trans_delay
+        self.T_trans_cloud = min(self.T_trans_edge) + self.UE.env.cloud.tw
+
+    def calculate_cloud_computing_delay(self):
+        self.T_calc_cloud = self.cycles / self.UE.env.cloud.comp_cap
 
     def calculate_edge_transmission_energy(self):
-        self.edge_trans_energies = []
+        self.E_trans_edge = []
         for i in range(len(self.MECs)):
-            self.edge_trans_energies.append(self.edge_trans_delays[i] * self.MECs[i].p_send)
+            self.E_trans_edge.append(self.T_trans_edge[i] * self.UE.p_send)
 
     def calculate_cloud_transmission_energy(self):
-        self.cloud_trans_energy = min(self.edge_trans_energies)
+        self.E_trans_cloud = min(self.E_trans_edge)
+    
+    def calculate_edge_computing_delay(self):
+        self.T_comp_edge = []
+        for i in range(len(self.MECs)):
+            self.T_comp_edge.append(self.cycles / self.MECs[i].mec_server.comp_cap)
 
 

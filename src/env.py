@@ -7,19 +7,29 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from src.task import Task
 
 class Env:
-    def __init__(self, max_x, max_y) -> None:
+    def __init__(self, max_x, max_y, mode, actor_lr=0.0, critic_lr=0.0, discount=0.0) -> None:
         self.ue = None
         self.mec_servers = []
         self.cloud_server = None
         self.max_x = max_x
         self.max_y = max_y
+        self.mode = mode
+        self.actor_lr = actor_lr
+        self.critic_lr = critic_lr
+        self.discount = discount
+        self.time_impo = 0.5
+        self.energy_impo = 1.0 - self.time_impo
+        self.ep_reward = 0.0
+        print("simulation mode: {}".format(self.mode))
+        print("actor lr: {}, critic lr: {} & discount: {}".format(actor_lr, critic_lr, discount))
 
     def add_mec_server(self, c_edge):
-        self.mec_servers.append(MEC(self, c_edge))
+        self.mec_servers.append(MEC(self, c_edge, max_task=self.task_count))
         print('added a MEC server with c_edge: {}'.format(c_edge))
 
     def add_ue(self, c_local, p_send, p_calc, bandwidth, snr):
-        self.ue = UE(self, c_local, p_calc, p_send)
+        self.ue = UE(self, c_local, p_calc, p_send, max_task=self.task_count)
+        self.snr = snr
         print('added a UE with c_local: {}, p_send: {} & p_calc: {}'.format(c_local, p_send, p_calc))
         for mec_server in self.mec_servers:
             SNR = random.randint(int(snr['min']), int(snr['max']))
@@ -55,3 +65,5 @@ class Env:
             cycles = random.randint(self.min_task_cycles_req, self.max_task_cycles_req)
             self.ue.add_task(Task(size, cycles, self.ue))
             print('added a task to ue with data size req: {} & cpu cycles req: {}'.format(size, cycles))
+        
+        print("total reward: {}".format(self.ue.process()))
