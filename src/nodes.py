@@ -135,7 +135,7 @@ class UE(Node):
                         print("couldn't offload to MEC server, server overloaded")
                         reward -= 100
                         print("reward: {}".format(-100))
-        reward = 100 / (10 + reward)
+        reward = 10 / (10 + reward)
         return self.get_normalized_state(), reward
 
     def process(self):

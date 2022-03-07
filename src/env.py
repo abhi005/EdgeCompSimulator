@@ -17,7 +17,7 @@ class Env:
         self.actor_lr = actor_lr
         self.critic_lr = critic_lr
         self.discount = discount
-        self.time_impo = 0.5
+        self.time_impo = 0.7
         self.energy_impo = 1.0 - self.time_impo
         self.ep_reward = 0.0
         print("simulation mode: {}".format(self.mode))
