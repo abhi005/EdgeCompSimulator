@@ -126,6 +126,10 @@ class Critic(object):
 
 class Agent:
     def __init__(self, state_dim, action_dim, actor_lr, critic_lr, discount) -> None:
+        print("Num GPUs Available: ", len(
+            tf.config.experimental.list_physical_devices('GPU')))
+        # gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.2)
+        # self.sess = Session(config=tf.ConfigProto(gpu_options=gpu_options))
         self.sess = Session()
         self.actor = Actor(self.sess, a_dim=action_dim, n_features=state_dim, lr=actor_lr, action_bound=[-1, 1])
         self.critic = Critic(self.sess, n_features=state_dim, lr=critic_lr, discount=discount)
