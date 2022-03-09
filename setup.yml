@@ -2,14 +2,25 @@ scene:
   length: 100
   height: 100
   decision_period: 10
-  mode: train
-  actor_lr: 0.001
-  critic_lr: 0.002
-  discount: 0.001
+  train:
+    save_path: "models/actor_critic_max_10/"
+    actor_lr: 0.001
+    critic_lr: 0.002
+    discount: 0.001
+    max_episodes: 1000
+    time_impo: 0.7
+  tasks:
+    count: 10
+    data_size:
+      min: 2
+      max: 5
+    cycles:
+      min: 2
+      max: 4
   mec_servers:
     count: 5
     comp_capacity: 2
-  ues:
+  ue:
     comp_capacity: 1
     trans_power: 23
     comp_power: 0.4
@@ -20,11 +31,3 @@ scene:
   cloud_server:
     comp_capacity: 10
     trans_delay: 4
-  task_req:
-    count: 10
-    data_size:
-      min: 2
-      max: 5
-    cycles:
-      min: 2
-      max: 4

@@ -1,25 +1,25 @@
 import os
-from responses import activate
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
+from tensorflow.compat.v1 import variable_scope, Session, placeholder, layers, distributions, train, global_variables_initializer, train, get_default_graph
 from dis import disco
 import numpy as np
-from tensorflow.compat.v1 import variable_scope, Session, placeholder, layers, distributions, train, global_variables_initializer, train
 tf.compat.v1.disable_eager_execution()
 
 class Actor(object):
-    def __init__(self, sess, a_dim, n_features, action_bound, lr=0.001) -> None:
+    def __init__(self, model_path, sess, a_dim, n_features, action_bound, lr=0.001) -> None:
         self.sess = sess
         self.s = placeholder(tf.float32, [1, n_features], "state")
         self.a = placeholder(tf.float32, shape=[1, a_dim], name="act")
         self.td_error = placeholder(tf.float32, None, name="td_error")
-
+        graph = get_default_graph()
+        
         l1 = layers.dense(
             inputs=self.s,
             units=256,
             activation=tf.nn.relu6,
-            kernel_initializer=tf.random_normal_initializer(.0, .1),
-            bias_initializer=tf.constant_initializer(0.1),
+            kernel_initializer=graph.get_tensor_by_name("l1/kernel:0") if model_path != "" else tf.random_normal_initializer(.0, .1),
+            bias_initializer=graph.get_tensor_by_name("l1/bias:0") if model_path != "" else tf.constant_initializer(0.1),
             name="l1"
         )
 
@@ -27,8 +27,10 @@ class Actor(object):
             inputs=l1,
             units=256,
             activation=tf.nn.relu6,
-            kernel_initializer=tf.random_normal_initializer(.0, .1),
-            bias_initializer=tf.constant_initializer(0.1),
+            kernel_initializer=tf.constant_initializer(graph.get_tensor_by_name(
+                "l2/kernel:0")) if model_path != "" else tf.random_normal_initializer(.0, .1),
+            bias_initializer=tf.constant_initializer(graph.get_tensor_by_name(
+                "l2/bias:0")) if model_path != "" else tf.constant_initializer(0.1),
             name="l2"
         )
 
@@ -36,8 +38,10 @@ class Actor(object):
             inputs=l2,
             units=a_dim,
             activation=tf.nn.tanh,
-            kernel_initializer=tf.random_normal_initializer(.0, .1),
-            bias_initializer=tf.constant_initializer(0.1),
+            kernel_initializer=tf.constant_initializer(graph.get_tensor_by_name(
+                "mu/kernel:0")) if model_path != "" else tf.random_normal_initializer(.0, .1),
+            bias_initializer=tf.constant_initializer(graph.get_tensor_by_name(
+                "mu/bias:0")) if model_path != "" else tf.constant_initializer(0.1),
             name="mu"
         )
 
@@ -45,8 +49,10 @@ class Actor(object):
             inputs=l2,
             units=a_dim,
             activation=tf.nn.softplus,
-            kernel_initializer=tf.random_normal_initializer(.0, .1),
-            bias_initializer=tf.constant_initializer(1.),
+            kernel_initializer=tf.constant_initializer(graph.get_tensor_by_name(
+                "sigma/kernel:0")) if model_path != "" else tf.random_normal_initializer(.0, .1),
+            bias_initializer=tf.constant_initializer(graph.get_tensor_by_name(
+                "sigma/bias:0")) if model_path != "" else tf.constant_initializer(0.1),
             name="sigma"
         )
 
@@ -61,7 +67,7 @@ class Actor(object):
             self.exp_v += 0.01 * self.normal_dist.entropy()
 
         with tf.name_scope('train'):
-            self.train_op = train.AdamOptimizer(lr).minimize(-self.exp_v, global_step)
+            self.train_op = graph.get_tensor_by_name("train/Adam") if model_path != "" else train.AdamOptimizer(lr).minimize(-self.exp_v, global_step)
 
     def learn(self, s, a, td):
         s = s[np.newaxis, :]    
@@ -74,9 +80,10 @@ class Actor(object):
         return self.sess.run(self.action, {self.s: s})
 
 class Critic(object):
-    def __init__(self, sess, n_features, discount, lr=0.01) -> None:
+    def __init__(self, model_path, sess, n_features, discount, lr=0.01) -> None:
         self.sess = sess
         self.discount = discount
+        graph = get_default_graph()
         with tf.name_scope('inputs'):
             self.s = placeholder(tf.float32, [1, n_features], "state")
             self.v_ = placeholder(tf.float32, [1, 1], name="v_next")
@@ -87,8 +94,10 @@ class Critic(object):
                 inputs=self.s,
                 units=256,
                 activation=tf.nn.relu6,
-                kernel_initializer=tf.random_normal_initializer(.0, .1),
-                bias_initializer=tf.constant_initializer(0.1),
+                kernel_initializer=tf.constant_initializer(graph.get_tensor_by_name(
+                    "Critic/l1/kernel:0")) if model_path != "" else tf.random_normal_initializer(.0, .1),
+                bias_initializer=tf.constant_initializer(graph.get_tensor_by_name(
+                    "Critic/l1/bias:0")) if model_path != "" else tf.constant_initializer(0.1),
                 name="l1"
             )
 
@@ -96,8 +105,10 @@ class Critic(object):
                 inputs=l1,
                 units=256,
                 activation=tf.nn.relu6,
-                kernel_initializer=tf.random_normal_initializer(.0, .1),
-                bias_initializer=tf.constant_initializer(0.1),
+                kernel_initializer=tf.constant_initializer(graph.get_tensor_by_name(
+                    "Critic/l2/kernel:0")) if model_path != "" else tf.random_normal_initializer(.0, .1),
+                bias_initializer=tf.constant_initializer(graph.get_tensor_by_name(
+                    "Critic/l2/bias:0")) if model_path != "" else tf.constant_initializer(0.1),
                 name="l2"
             )
 
@@ -105,8 +116,10 @@ class Critic(object):
                 inputs=l2,
                 units=1,
                 activation=None,
-                kernel_initializer=tf.random_normal_initializer(.0, .1),
-                bias_initializer=tf.constant_initializer(0.1),
+                kernel_initializer=tf.constant_initializer(graph.get_tensor_by_name(
+                    "Critic/V/kernel:0")) if model_path != "" else tf.random_normal_initializer(.0, .1),
+                bias_initializer=tf.constant_initializer(graph.get_tensor_by_name(
+                    "Critic/V/bias:0")) if model_path != "" else tf.constant_initializer(0.1),
                 name="V"
             )
 
@@ -115,7 +128,8 @@ class Critic(object):
             self.loss = tf.square(self.td_error)
         
         with variable_scope('train'):
-            self.train_op = train.AdamOptimizer(lr).minimize(self.loss)
+            self.train_op = graph.get_tensor_by_name(
+                "train_1/Adam") if model_path != "" else train.AdamOptimizer(lr).minimize(self.loss)
     
     def learn(self, s, r, s_):
         s, s_ = s[np.newaxis, :], s_[np.newaxis, :]
@@ -125,14 +139,18 @@ class Critic(object):
     
 
 class Agent:
-    def __init__(self, state_dim, action_dim, actor_lr, critic_lr, discount) -> None:
+    def __init__(self, model_path, state_dim, action_dim, actor_lr, critic_lr, discount) -> None:
         print("Num GPUs Available: ", len(
             tf.config.experimental.list_physical_devices('GPU')))
         # gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.2)
         # self.sess = Session(config=tf.ConfigProto(gpu_options=gpu_options))
         self.sess = Session()
-        self.actor = Actor(self.sess, a_dim=action_dim, n_features=state_dim, lr=actor_lr, action_bound=[-1, 1])
-        self.critic = Critic(self.sess, n_features=state_dim, lr=critic_lr, discount=discount)
+        if model_path != "":
+            saver = train.import_meta_graph(model_path + ".meta")
+            saver.restore(self.sess, model_path)
+
+        self.actor = Actor(model_path, self.sess, a_dim=action_dim, n_features=state_dim, lr=actor_lr, action_bound=[-1, 1])
+        self.critic = Critic(model_path, self.sess, n_features=state_dim, lr=critic_lr, discount=discount)
         self.sess.run(global_variables_initializer())
         self.saver = train.Saver(max_to_keep=5)
 

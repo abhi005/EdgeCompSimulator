@@ -1,2 +1,0 @@
-model_checkpoint_path: "actor_critic_max_10_task.ckpt"
-all_model_checkpoint_paths: "actor_critic_max_10_task.ckpt"

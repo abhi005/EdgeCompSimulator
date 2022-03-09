@@ -1,3 +1,5 @@
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 class Task:
     def __init__(self, size, cycles, UE) -> None:
         # data size requirement for task
