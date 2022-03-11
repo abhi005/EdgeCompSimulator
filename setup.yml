@@ -3,14 +3,14 @@ scene:
   height: 100
   decision_period: 10
   train:
-    save_path: "models/actor_critic_max_10/"
+    save_path: "models/actor_critic_max_20/"
     actor_lr: 0.001
     critic_lr: 0.002
     discount: 0.001
     max_episodes: 1000
-    time_impo: 0.7
   tasks:
-    count: 10
+    time_impo: 0.5
+    count: 20
     data_size:
       min: 2
       max: 5

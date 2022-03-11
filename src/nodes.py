@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.schedulers.background import BackgroundScheduler
 from src.utils import Queue
-from src.agent2 import Agent
+from src.agent import Agent
 import numpy as np
 from sre_parse import State
 import random
@@ -118,6 +118,7 @@ class UE(Node):
             decisions.append(int(i * single_task_dim + decision))
             task = self.tasks.peek()
             if task != None:
+                comp_delay, energy_consum, trans_delay, curr_reward = 0.0, 0.0, 0.0, 0.0
                 if decision == 0:
                     print("local computation")
                     # local computation
@@ -125,7 +126,6 @@ class UE(Node):
                     energy_consum = task.E_calc_local
                     curr_reward = self.env.time_impo * comp_delay + \
                         self.env.energy_impo * energy_consum
-                    reward += curr_reward
                     self.poll_task()
                     print("reward: {}".format(curr_reward))
                 elif decision == len(a) - 1:
@@ -137,7 +137,6 @@ class UE(Node):
                     curr_reward = self.env.time_impo * \
                         (comp_delay + trans_delay) + \
                         self.env.energy_impo * energy_consum
-                    reward += curr_reward
                     self.poll_task()
                     print("reward: {}".format(curr_reward))
                 else:
@@ -152,16 +151,18 @@ class UE(Node):
                         curr_reward = self.env.time_impo * \
                             (comp_delay + trans_delay) + \
                             self.env.energy_impo * energy_consum
-                        reward += curr_reward
                         self.poll_task()
                         self.mec_conns[MEC_index].mec_server.add_task(task)
                         print("reward: {}".format(curr_reward))
                     else:
                         print("couldn't offload to MEC server, server overloaded")
-                        reward -= 100
+                        curr_reward = -100
                         print("reward: {}".format(-100))
+                reward += curr_reward
+                self.env.metrics.add_task_delay(self.env.max_episodes, comp_delay + trans_delay)
+                self.env.metrics.add_task_energy_consum(self.env.max_episodes, energy_consum)
+                self.env.metrics.add_task_reward(self.env.max_episodes, curr_reward)
             i += 1
-
         reward = 100 / (10 + reward)
         return self.get_normalized_state(), reward, decisions
 
@@ -170,8 +171,9 @@ class UE(Node):
         s = self.get_normalized_state()
         action = self.agent.get_action(s)
         s_, r, action = self.take_step(action)
-        self.agent.learn(state=s, action=action, reward=r, state_=s_)
-        self.agent.save()
+        if self.env.mode == "train":
+            self.agent.learn(state=s, action=action, reward=r, state_=s_)
+            self.agent.save()
         return r
 
 class MEC(Node):

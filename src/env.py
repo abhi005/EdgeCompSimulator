@@ -1,9 +1,11 @@
 from os.path import exists
+from src.metrics import Metrics
 from src.task import Task
 from apscheduler.schedulers.blocking import BlockingScheduler
 from src.nodes import MEC, UE, Cloud
 from src.connections import MEC_Connection
 from time import sleep
+import numpy as np
 import random
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -18,14 +20,18 @@ class Env:
         self.mec_servers = []
         self.cloud = None
         self.UE = None
+        self.metrics = Metrics()
+        self.actor_lr = 0.0
+        self.critic_lr = 0.0
+        self.discount = 0.0
         print("decision_period: {}".format(self.T))
 
         if "train" in self.config:
-            self.load_training_config()
             self.mode = "train"
+            self.load_training_config()
         else:
             self.mode = "test"
-            # self.load_test_config()
+            self.load_test_config()
 
         self.load_task_config()
         self.load_cloud_config()
@@ -39,20 +45,25 @@ class Env:
         self.critic_lr = config["critic_lr"]
         self.discount = config["discount"]
         self.max_episodes = config["max_episodes"]
-        self.time_impo = config["time_impo"]
-        self.energy_impo = 1.0 - self.time_impo
-        print("model_save_path: {}\n actor_lr: {}\n critic_lr: {}\n discount: {}\n max_episodes: {}\n time_impo: {}\n energy_impo: {}".format(
-            self.model_path, self.actor_lr, self.critic_lr, self.discount, self.max_episodes, self.time_impo, self.energy_impo))
+        print("model_save_path: {}\nactor_lr: {}\ncritic_lr: {}\ndiscount: {}\nmax_episodes: {}".format(
+            self.model_path, self.actor_lr, self.critic_lr, self.discount, self.max_episodes))
+
+    def load_test_config(self):
+        config = self.config["test"]
+        self.model_path = config["model_path"]
+        self.max_episodes = config["runs"]
 
     def load_task_config(self):
         config = self.config["tasks"]
+        self.time_impo = config["time_impo"]
+        self.energy_impo = 1.0 - self.time_impo
         self.max_task_count = config["count"]
         self.min_task_data_size_req = int(config["data_size"]["min"])
         self.max_task_data_size_req = int(config["data_size"]["max"])
         self.min_task_cycles_req = int(config["cycles"]["min"])
         self.max_task_cycles_req = int(config["cycles"]["max"])
-        print("max_task_count: {}\n min_task_data_req: {}\n max_task_data_size_req: {}\n min_task_cycles_req: {}\n max_task_cycles_req: {}".format(
-            self.max_task_count, self.min_task_data_size_req, self.max_task_data_size_req, self.min_task_cycles_req, self.max_task_cycles_req))
+        print("max_task_count: {}\nmin_task_data_req: {}\nmax_task_data_size_req: {}\nmin_task_cycles_req: {}\nmax_task_cycles_req: {}\ntime_impo: {}\nenergy_impo: {}".format(
+            self.max_task_count, self.min_task_data_size_req, self.max_task_data_size_req, self.min_task_cycles_req, self.max_task_cycles_req, self.time_impo, self.energy_impo))
 
     def load_cloud_config(self):
         config = self.config["cloud_server"]
@@ -85,10 +96,21 @@ class Env:
             print("created a connection between UE and MEC server with bandwidth: {} & SNR: {}".format(
                 config["bandwidth"], SNR))
 
+    def display_metrics(self):
+        for k in self.metrics.task_delays_per_episode:
+            print("episode: {}, average task delay: {}".format(
+                k, np.mean(self.metrics.task_delays_per_episode[k])))
+        for k in self.metrics.energy_consum_per_episode:
+            print("episode: {}, average energy consumption: {}".format(k, np.mean(self.metrics.energy_consum_per_episode[k])))
+        for k in self.metrics.rewards_per_episode:
+            print("episode: {}, average rewards: {}".format(
+                k, np.mean(self.metrics.rewards_per_episode[k])))
+        exit(0)
+
     def start(self):
-        scheduler = BlockingScheduler(daemon=True)
-        scheduler.add_job(self.task_generator, "interval", seconds=self.T)
-        scheduler.start()
+        self.scheduler = BlockingScheduler(daemon=True)
+        self.scheduler.add_job(self.task_generator, "interval", seconds=self.T)
+        self.scheduler.start()
 
     def task_generator(self):
         if self.max_episodes > 0:
@@ -102,4 +124,9 @@ class Env:
                 print("added a task to ue with data size req: {} & cpu cycles req: {}".format(
                     size, cycles))
             reward = self.ue.process()
+            print("reward for episode {}: {}".format(self.max_episodes, reward))
             self.max_episodes -= 1
+        else:
+            self.display_metrics()
+            self.scheduler.shutdown()
+            exit(0)
