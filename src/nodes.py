@@ -161,9 +161,9 @@ class UE(Node):
                 reward += curr_reward
                 self.env.metrics.add_task_delay(self.env.max_episodes, comp_delay + trans_delay)
                 self.env.metrics.add_task_energy_consum(self.env.max_episodes, energy_consum)
-                self.env.metrics.add_task_reward(self.env.max_episodes, curr_reward)
             i += 1
         reward = 100 / (10 + reward)
+        self.env.metrics.add_episode_reward(self.env.max_episodes, reward)
         return self.get_normalized_state(), reward, decisions
 
     def process(self):

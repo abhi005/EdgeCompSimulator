@@ -16,7 +16,5 @@ class Metrics():
             self.energy_consum_per_episode[episode] = []
         self.energy_consum_per_episode[episode].append(energy)
 
-    def add_task_reward(self, episode, reward):
-        if not episode in self.rewards_per_episode:
-            self.rewards_per_episode[episode] = []
-        self.rewards_per_episode[episode].append(reward)
+    def add_episode_reward(self, episode, reward):
+        self.rewards_per_episode[episode] = reward

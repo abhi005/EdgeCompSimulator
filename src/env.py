@@ -8,6 +8,7 @@ from time import sleep
 import numpy as np
 import random
 import os
+import pickle
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 
@@ -105,6 +106,16 @@ class Env:
         for k in self.metrics.rewards_per_episode:
             print("episode: {}, average rewards: {}".format(
                 k, np.mean(self.metrics.rewards_per_episode[k])))
+        if self.mode == "train":
+            with open(self.model_path + "training_rewards_per_episode.pkl", "wb") as f:
+                pickle.dump(self.metrics.rewards_per_episode, f)
+        else:
+            with open(self.model_path + "testing_rewards_per_episode.pkl", "wb") as f:
+                pickle.dump(self.metrics.rewards_per_episode, f)
+            with open(self.model_path + "testing_energy_conumption.pkl", "wb") as f:
+                pickle.dump(self.metrics.energy_consum_per_episode, f)
+            with open(self.model_path + "testing_task_delays.pkl", "wb") as f:
+                pickle.dump(self.metrics.task_delays_per_episode, f)
         exit(0)
 
     def start(self):
