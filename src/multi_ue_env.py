@@ -12,7 +12,7 @@ import pickle
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 
-class Env:
+class MultiUeEnv:
     def __init__(self, config) -> None:
         self.config = config
         self.max_x = int(self.config['length'])
@@ -20,53 +20,22 @@ class Env:
         self.T = int(self.config["decision_period"])
         self.mec_servers = []
         self.cloud = None
-        self.ue = None
+        self.ues = []
         self.metrics = Metrics()
         self.actor_lr = 0.0
         self.critic_lr = 0.0
         self.discount = 0.0
         print("decision_period: {}".format(self.T))
-
-        if "train" in self.config:
-            self.mode = "train"
-            self.load_training_config()
-        elif "test" in self.config:
-            self.mode = "test"
-            self.load_test_config()
-        elif "edge" in self.config:
-            self.mode = "edge"
-            self.load_greedy_edge_config()
-        elif "cloud" in self.config:
-            self.mode = "cloud"
-            self.load_greedy_cloud_config()
+        self.mode = "test"
+        self.load_test_config()
 
         self.load_task_config()
         self.load_cloud_config()
         self.load_mec_servers_config()
         self.load_ue_config()
 
-    def load_training_config(self):
-        config = self.config["train"]
-        self.model_path = config["save_path"]
-        self.actor_lr = config["actor_lr"]
-        self.critic_lr = config["critic_lr"]
-        self.discount = config["discount"]
-        self.max_episodes = config["max_episodes"]
-        print("model_save_path: {}\nactor_lr: {}\ncritic_lr: {}\ndiscount: {}\nmax_episodes: {}".format(
-            self.model_path, self.actor_lr, self.critic_lr, self.discount, self.max_episodes))
-
     def load_test_config(self):
         config = self.config["test"]
-        self.model_path = config["model_path"]
-        self.max_episodes = config["runs"]
-
-    def load_greedy_edge_config(self):
-        config = self.config["edge"]
-        self.model_path = config["model_path"]
-        self.max_episodes = config["runs"]
-    
-    def load_greedy_cloud_config(self):
-        config = self.config["cloud"]
         self.model_path = config["model_path"]
         self.max_episodes = config["runs"]
 
@@ -101,36 +70,40 @@ class Env:
 
     def load_ue_config(self):
         config = self.config["ue"]
-        self.ue = UE(self, config["comp_capacity"],
-                     config["comp_power"], config["trans_power"], 0)
+        count = config["count"]
         self.snr = config["snr"]
-        print("added a UE with c_local: {}, p_send: {} & p_calc: {}".format(
-            config["comp_capacity"], config["trans_power"], config["comp_power"]))
-        for mec_server in self.mec_servers:
-            SNR = random.randint(int(self.snr['min']), int(self.snr['max']))
-            self.ue.add_mec_conn(MEC_Connection(
-                config["bandwidth"], SNR, mec_server))
-            print("created a connection between UE and MEC server with bandwidth: {} & SNR: {}".format(
-                config["bandwidth"], SNR))
+        for _ in range(count):
+            self.ues.append(
+                UE(self, config["comp_capacity"], config["comp_power"], config["trans_power"], _))
+            print("added a UE with c_local: {}, p_send: {} & p_calc: {}".format(
+                config["comp_capacity"], config["trans_power"], config["comp_power"]))
+            for mec_server in self.mec_servers:
+                SNR = random.randint(
+                    int(self.snr['min']), int(self.snr['max']))
+                self.ues[_].add_mec_conn(MEC_Connection(
+                    config["bandwidth"], SNR, mec_server))
+                print("created a connection between UE {} and MEC server with bandwidth: {} & SNR: {}".format(
+                    _, config["bandwidth"], SNR))
 
     def display_metrics(self):
-        for k in self.metrics.task_delays_per_episode:
-            print("episode: {}, average task delay: {}".format(
-                k, np.mean(self.metrics.task_delays_per_episode[k])))
-        for k in self.metrics.energy_consum_per_episode:
-            print("episode: {}, average energy consumption: {}".format(k, np.mean(self.metrics.energy_consum_per_episode[k])))
-        for k in self.metrics.rewards_per_episode:
-            print("episode: {}, average rewards: {}".format(
-                k, np.mean(self.metrics.rewards_per_episode[k])))
+        # for k in self.metrics.task_delays_per_episode:
+        #     print("episode: {}, average task delay: {}".format(
+        #         k, np.mean(self.metrics.task_delays_per_episode[k])))
+        # for k in self.metrics.energy_consum_per_episode:
+        #     print("episode: {}, average energy consumption: {}".format(
+        #         k, np.mean(self.metrics.energy_consum_per_episode[k])))
+        # for k in self.metrics.rewards_per_episode:
+        #     print("episode: {}, average rewards: {}".format(
+        #         k, np.mean(self.metrics.rewards_per_episode[k])))
         if self.mode == "train":
             with open(self.model_path + "training_rewards_per_episode.pkl", "wb") as f:
                 pickle.dump(self.metrics.rewards_per_episode, f)
         else:
-            with open(self.model_path + "testing_rewards_per_episode.pkl", "wb") as f:
+            with open(self.model_path + "multi_ue_testing_rewards_per_episode.pkl", "wb") as f:
                 pickle.dump(self.metrics.rewards_per_episode, f)
-            with open(self.model_path + "testing_energy_conumption.pkl", "wb") as f:
+            with open(self.model_path + "multi_ue_testing_energy_conumption.pkl", "wb") as f:
                 pickle.dump(self.metrics.energy_consum_per_episode, f)
-            with open(self.model_path + "testing_task_delays.pkl", "wb") as f:
+            with open(self.model_path + "multi_ue_testing_task_delays.pkl", "wb") as f:
                 pickle.dump(self.metrics.task_delays_per_episode, f)
         exit(0)
 
@@ -141,17 +114,20 @@ class Env:
 
     def task_generator(self):
         if self.max_episodes > 0:
-            print("generating new tasks")
-            for _ in range(self.max_task_count):
-                size = random.randint(
-                    self.min_task_data_size_req, self.max_task_data_size_req)
-                cycles = random.randint(
-                    self.min_task_cycles_req, self.max_task_cycles_req)
-                self.ue.add_task(Task(size, cycles, self.ue))
-                print("added a task to ue with data size req: {} & cpu cycles req: {}".format(
-                    size, cycles))
-            reward = self.ue.process()
-            print("reward for episode {}: {}".format(self.max_episodes, reward))
+            ue_indexs = [*range(len(self.ues))]
+            random.shuffle(ue_indexs)
+            for _ in ue_indexs:
+                print("generating new tasks for ue {}".format(_))
+                for i in range(self.max_task_count):
+                    size = random.randint(
+                        self.min_task_data_size_req, self.max_task_data_size_req)
+                    cycles = random.randint(
+                        self.min_task_cycles_req, self.max_task_cycles_req)
+                    self.ues[_].add_task(Task(size, cycles, self.ues[_]))
+                    print("added a task to ue {} with data size req: {} & cpu cycles req: {}".format(_,
+                        size, cycles))
+                reward = self.ues[_].process()
+                print("reward for episode {} for ue {}: {}".format(self.max_episodes, _, reward))
             self.max_episodes -= 1
         else:
             self.display_metrics()

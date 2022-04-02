@@ -1,0 +1,30 @@
+scene:
+  length: 100
+  height: 100
+  decision_period: 10
+  edge:
+    model_path: "models/edge_max/20_"
+    runs: 10
+  tasks:
+    time_impo: 0.5
+    count: 20
+    data_size:
+      min: 2
+      max: 5
+    cycles:
+      min: 2
+      max: 4
+  mec_servers:
+    count: 5
+    comp_capacity: 2
+  ue:
+    comp_capacity: 1
+    trans_power: 23
+    comp_power: 0.4
+    snr:
+      min: 1
+      max: 31
+    bandwidth: 10
+  cloud_server:
+    comp_capacity: 10
+    trans_delay: 4

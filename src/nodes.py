@@ -10,7 +10,7 @@ from src.agent import Agent
 import numpy as np
 from sre_parse import State
 import random
-
+import threading
 
 class Node:
     def __init__(self, env, comp_cap) -> None:
@@ -22,7 +22,7 @@ class Node:
 
 
 class UE(Node):
-    def __init__(self, env, comp_cap, p_calc, p_send) -> None:
+    def __init__(self, env, comp_cap, p_calc, p_send, id) -> None:
         super().__init__(env, comp_cap)
         self.mec_conns = []
         self.tasks = Queue(self.env.max_task_count)
@@ -30,13 +30,19 @@ class UE(Node):
         self.p_calc = p_calc
         # transmission power in Hz
         self.p_send = p_send
-        self.agent = Agent(mode=env.mode,
-            model_path=env.model_path,
-            state_dim=self.get_state_dim(),
-            action_dim=self.get_action_dim(),
-            actor_lr=self.env.actor_lr,
-            critic_lr=self.env.critic_lr,
-            discount=self.env.discount)
+        self.id = id
+        if self.env.mode == "edge":
+            self.last_mec_server = -1
+        elif self.env.mode == "cloud":
+            pass
+        else:
+            self.agent = Agent(mode=env.mode,
+                               model_path=env.model_path,
+                               state_dim=self.get_state_dim(),
+                               action_dim=self.get_action_dim(),
+                               actor_lr=self.env.actor_lr,
+                               critic_lr=self.env.critic_lr,
+                               discount=self.env.discount)
 
     def get_action_dim(self):
         return (2 + len(self.env.mec_servers)) * self.env.max_task_count
@@ -107,6 +113,60 @@ class UE(Node):
         for i in range(0, len(action), dim):
             yield action[i:i + dim]
 
+    def take_greedy_cloud_step(self):
+        reward = 0.0
+        while self.tasks.get_len() != 0:
+            task = self.tasks.peek()
+            if task != None:
+                comp_delay, energy_consum, trans_delay, curr_reward = 0.0, 0.0, 0.0, 0.0
+                print("cloud offloading")
+                # cloud computation
+                trans_delay = task.T_trans_cloud
+                comp_delay = task.T_calc_cloud
+                energy_consum = task.E_trans_cloud
+                curr_reward = self.env.time_impo * \
+                    (comp_delay + trans_delay) + \
+                    self.env.energy_impo * energy_consum
+                self.poll_task()
+                print("reward: {}".format(curr_reward))
+                reward += curr_reward
+                self.env.metrics.add_task_delay(self.id, self.env.max_episodes, comp_delay + trans_delay)
+                self.env.metrics.add_task_energy_consum(self.id, self.env.max_episodes, energy_consum)
+        reward = 100 / (10 + reward)
+        self.env.metrics.add_episode_reward(self.id, self.env.max_episodes, reward)
+        return reward
+
+    def take_greedy_edge_step(self, action):
+        reward = 0.0
+        while self.tasks.get_len() != 0:
+            task = self.tasks.peek()
+            if task != None:
+                comp_delay, energy_consum, trans_delay, curr_reward = 0.0, 0.0, 0.0, 0.0
+                print("edge offloading")
+                # MEC server computation
+                MEC_index = action
+                if len(self.mec_conns[MEC_index].mec_server.tasks) < self.env.max_task_count:
+                    print("offloading to MEC server: {}".format(MEC_index))
+                    trans_delay = task.T_trans_edge[MEC_index]
+                    comp_delay = task.T_comp_edge[MEC_index]
+                    energy_consum = task.E_trans_edge[MEC_index]
+                    curr_reward = self.env.time_impo * \
+                        (comp_delay + trans_delay) + \
+                        self.env.energy_impo * energy_consum
+                    self.poll_task()
+                    self.mec_conns[MEC_index].mec_server.add_task(task)
+                    print("reward: {}".format(curr_reward))
+                else:
+                    print("couldn't offload to MEC server, server overloaded")
+                    curr_reward = -100
+                    print("reward: {}".format(-100))
+                reward += curr_reward
+                self.env.metrics.add_task_delay(self.env.max_episodes, comp_delay + trans_delay)
+                self.env.metrics.add_task_energy_consum(self.env.max_episodes, energy_consum)
+        reward = 100 / (10 + reward)
+        self.env.metrics.add_episode_reward(self.env.max_episodes, reward)
+        return reward
+
     def take_step(self, action):
         single_task_dim = len(action) / self.env.max_task_count
         reward = 0.0
@@ -159,36 +219,47 @@ class UE(Node):
                         curr_reward = -100
                         print("reward: {}".format(-100))
                 reward += curr_reward
-                self.env.metrics.add_task_delay(self.env.max_episodes, comp_delay + trans_delay)
-                self.env.metrics.add_task_energy_consum(self.env.max_episodes, energy_consum)
+                self.env.metrics.add_task_delay(self.id, self.env.max_episodes, comp_delay + trans_delay)
+                self.env.metrics.add_task_energy_consum(self.id, self.env.max_episodes, energy_consum)
             i += 1
         reward = 100 / (10 + reward)
-        self.env.metrics.add_episode_reward(self.env.max_episodes, reward)
+        self.env.metrics.add_episode_reward(self.id, self.env.max_episodes, reward)
         return self.get_normalized_state(), reward, decisions
 
     def process(self):
-        # decide where to offload the tasks using agent
-        s = self.get_normalized_state()
-        action = self.agent.get_action(s)
-        s_, r, action = self.take_step(action)
-        if self.env.mode == "train":
-            self.agent.learn(state=s, action=action, reward=r, state_=s_)
-            self.agent.save()
-        return r
+        # decide where to offload the tasks using agent    
+        if self.env.mode == "edge":
+            action = (self.last_mec_server + 1) % len(self.mec_conns)           
+            r = self.take_greedy_edge_step(action)
+            return r
+        elif self.env.mode == "cloud":
+            r = self.take_greedy_cloud_step()
+            return r
+        else:
+            s = self.get_normalized_state()
+            action = self.agent.get_action(s)
+            s_, r, action = self.take_step(action)
+            if self.env.mode == "train":
+                self.agent.learn(state=s, action=action, reward=r, state_=s_)
+                self.agent.save()
+            return r
 
 class MEC(Node):
     def __init__(self, env, comp_cap) -> None:
         super().__init__(env, comp_cap)
         self.tasks = {}
+        self.mutex = threading.Lock()
         self.scheduler = BackgroundScheduler(daemon=True)
         self.scheduler.start()
 
     def add_task(self, task):
+        self.mutex.acquire()
         id = str(uuid.uuid4())
         after_secs = datetime.now() + timedelta(seconds=int(math.ceil(task.cycles / self.comp_cap)))
         self.tasks[id] = task
         self.scheduler.add_job(self.complete_task, args=(
             id,), trigger=DateTrigger(after_secs), max_instances=1)
+        self.mutex.release()
 
     def complete_task(self, id):
         print("removing task from MEC serve with id: {}".format(id))

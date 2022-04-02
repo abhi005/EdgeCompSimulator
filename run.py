@@ -3,6 +3,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import yaml
 import argparse
 from src.env import Env
+from src.multi_ue_env import MultiUeEnv
 
 def read_file(path):
     with open(path, mode='r') as file:
@@ -17,7 +18,10 @@ def main():
     # loading yaml config for simulator
     config = yaml.safe_load(read_file(args.config))['scene']
     print('yaml config loading done')
-    env = Env(config)
+    if config["mode"] == "multiple_ue":
+        env = MultiUeEnv(config)
+    else:
+        env = Env(config)
     
     # starting the simulator
     env.start()
